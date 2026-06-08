@@ -1,3 +1,4 @@
+import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -40,10 +41,15 @@ class _VoltiaMapScreenState extends State<VoltiaMapScreen>
   final math.Random _random = math.Random();
 
   late final AnimationController _pulseController;
-  Timer? _engineTimer;
 
-  LatLng _currentPosition = const LatLng(37.4219983, -122.084);
+Timer? _engineTimer;
+StreamSubscription<Position>? _gpsSubscription;
+bool _gpsEnabled = false;
 
+LatLng _currentPosition = const LatLng(
+  37.4219983,
+  -122.084,
+);
   double _speed = 4.8;
   double _heading = 52;
 
@@ -78,15 +84,49 @@ class _VoltiaMapScreenState extends State<VoltiaMapScreen>
     )..repeat();
 
     _seedPoints();
+    _initGps();
     _startEngine();
   }
 
   @override
-  void dispose() {
-    _engineTimer?.cancel();
-    _pulseController.dispose();
-    super.dispose();
+void dispose() {
+  _gpsSubscription?.cancel();
+  _engineTimer?.cancel();
+  _pulseController.dispose();
+  super.dispose();
+}
+
+Future<void> _initGps() async {
+
+  bool serviceEnabled =
+      await Geolocator.isLocationServiceEnabled();
+
+  if (!serviceEnabled) {
+    return;
   }
+
+  LocationPermission permission =
+    await Geolocator.checkPermission();
+
+if (permission == LocationPermission.denied) {
+  permission =
+      await Geolocator.requestPermission();
+}
+
+if (permission == LocationPermission.deniedForever) {
+  return;
+}
+
+Position position =
+    await Geolocator.getCurrentPosition();
+
+setState(() {
+  _currentPosition = LatLng(
+    position.latitude,
+    position.longitude,
+  );
+});
+}
 
   void _seedPoints() {
     _movementTrail.clear();
