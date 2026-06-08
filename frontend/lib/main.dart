@@ -74,6 +74,13 @@ LatLng _currentPosition = const LatLng(
   final List<LatLng> _sentinelPoints = [];
   final List<LatLng> _orbitPoints = [];
 
+  final Map<String, LatLng> _familyDevices = {
+  'Padre': const LatLng(39.9372, -75.2570),
+  'Madre': const LatLng(39.9365, -75.2580),
+  'Hijo': const LatLng(39.9378, -75.2565),
+  'Ford Edge': const LatLng(39.9360, -75.2585),
+};
+
   @override
   void initState() {
     super.initState();
@@ -442,6 +449,16 @@ setState(() {
               height: 90,
               child: _buildMainMarker(),
             ),
+
+            ..._familyDevices.entries.map(
+              (entry) => Marker(
+                point: entry.value,
+                width: 56,
+                height: 56,
+                child: _buildFamilyDeviceMarker(entry.key),
+              ),
+            ),
+
             ..._orbitPoints.map(
               (point) => Marker(
                 point: point,
@@ -460,37 +477,60 @@ setState(() {
     );
   }
 
-  Widget _buildMainMarker() {
-    final double scale = 1 + (_pulseController.value * 0.12);
+Widget _buildMainMarker() {
+  final double scale = 1 + (_pulseController.value * 0.12);
 
-    return Transform.scale(
-      scale: scale,
-      child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.black.withValues(alpha: 0.90),
-          border: Border.all(
-            color: _mainColor.withValues(alpha: 0.95),
-            width: 2.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _mainColor.withValues(alpha: 0.65),
-              blurRadius: 30,
-              spreadRadius: 4,
-            ),
-          ],
+  return Transform.scale(
+    scale: scale,
+    child: Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.black.withValues(alpha: 0.90),
+        border: Border.all(
+          color: _mainColor.withValues(alpha: 0.95),
+          width: 2.2,
         ),
-        child: Icon(
-          _responseIcon,
+        boxShadow: [
+          BoxShadow(
+            color: _mainColor.withValues(alpha: 0.65),
+            blurRadius: 30,
+            spreadRadius: 4,
+          ),
+        ],
+      ),
+      child: Icon(
+        _responseIcon,
+        color: _mainColor,
+        size: 34,
+      ),
+    ),
+  );
+}
+
+Widget _buildFamilyDeviceMarker(String name) {
+  return Container(
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.black.withValues(alpha: 0.85),
+      border: Border.all(
+        color: _mainColor.withValues(alpha: 0.95),
+        width: 2,
+      ),
+    ),
+    child: Center(
+      child: Text(
+        name.substring(0, 1),
+        style: TextStyle(
           color: _mainColor,
-          size: 34,
+          fontWeight: FontWeight.bold,
+          fontSize: 18,
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Widget _buildDarkOverlay() {
+Widget _buildDarkOverlay() {
     return IgnorePointer(
       child: Container(
         decoration: BoxDecoration(
