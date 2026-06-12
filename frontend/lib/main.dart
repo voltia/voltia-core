@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'services/socket_service.dart';
+
 void main() {
   runApp(const VoltiaApp());
 }
@@ -37,8 +39,11 @@ class VoltiaMapScreen extends StatefulWidget {
 
 class _VoltiaMapScreenState extends State<VoltiaMapScreen>
     with SingleTickerProviderStateMixin {
+
   final MapController _mapController = MapController();
   final math.Random _random = math.Random();
+
+  final SocketService _socketService = SocketService();
 
   late final AnimationController _pulseController;
 
@@ -74,13 +79,17 @@ LatLng _currentPosition = const LatLng(
   final List<LatLng> _sentinelPoints = [];
   final List<LatLng> _orbitPoints = [];
 
-  final Map<String, LatLng> _familyDevices = {
-  'Padre': const LatLng(39.9372, -75.2570),
-  'Madre': const LatLng(39.9365, -75.2580),
-  'Hijo': const LatLng(39.9378, -75.2565),
-  'Ford Edge': const LatLng(39.9360, -75.2585),
+  final Map<String,LatLng> _familyDevices = {
+  'Padre': const LatLng(39.9420, -75.2520),
+  'Madre': const LatLng(39.9320, -75.2620),
+  'Hijo': const LatLng(39.9390, -75.2480),
+  'Ford Edge': const LatLng(39.9280, -75.2550),
 };
 
+  final Map<String, LatLng> _activeSosMarkers = {};
+
+  String? _lastSosMessage;
+  
   @override
   void initState() {
     super.initState();
@@ -93,13 +102,28 @@ LatLng _currentPosition = const LatLng(
     _seedPoints();
     _initGps();
     _startEngine();
-  }
 
+    _socketService.connect((data) {
+      if (!mounted) return;
+
+      if (data['type'] == 'LOCATION_UPDATE') {
+       final String name = data['deviceId'] ?? 'Device';
+       final double lat = (data['latitude'] as num).toDouble();
+       final double lng = (data['longitude'] as num).toDouble();
+
+       setState(() {
+        _familyDevices[name] = LatLng(lat, lng);
+      });
+    }
+  });
+}
+ 
   @override
 void dispose() {
   _gpsSubscription?.cancel();
   _engineTimer?.cancel();
   _pulseController.dispose();
+  _socketService.dispose();
   super.dispose();
 }
 
