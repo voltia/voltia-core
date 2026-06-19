@@ -30,6 +30,30 @@ class VoltiaApp extends StatelessWidget {
   }
 }
 
+class VoltiaDevice {
+  final String deviceId;
+  final String ownerName;
+  final String deviceType;
+  final String platform;
+  final double lat;
+  final double lng;
+  final int battery;
+  final String status;
+  final DateTime lastSeen;
+
+  const VoltiaDevice({
+    required this.deviceId,
+    required this.ownerName,
+    required this.deviceType,
+    required this.platform,
+    required this.lat,
+    required this.lng,
+    required this.battery,
+    required this.status,
+    required this.lastSeen,
+  });
+}
+
 class VoltiaMapScreen extends StatefulWidget {
   const VoltiaMapScreen({super.key});
 
@@ -79,17 +103,61 @@ LatLng _currentPosition = const LatLng(
   final List<LatLng> _sentinelPoints = [];
   final List<LatLng> _orbitPoints = [];
 
-  final Map<String,LatLng> _familyDevices = {
-  'Padre': const LatLng(39.9420, -75.2520),
-  'Madre': const LatLng(39.9320, -75.2620),
-  'Hijo': const LatLng(39.9390, -75.2480),
-  'Ford Edge': const LatLng(39.9280, -75.2550),
+  final Map<String, VoltiaDevice> _familyDevices = {
+  'Samsung S25': VoltiaDevice(
+    deviceId: 'device-001',
+    ownerName: 'Padre',
+    deviceType: 'PHONE',
+    platform: 'ANDROID',
+    lat: 39.9420,
+    lng: -75.2520,
+    battery: 91,
+    status: 'ONLINE',
+    lastSeen: DateTime.now(),
+  ),
+
+  'Maria Phone': VoltiaDevice(
+    deviceId: 'device-002',
+    ownerName: 'Madre',
+    deviceType: 'PHONE',
+    platform: 'ANDROID',
+    lat: 39.9320,
+    lng: -75.2620,
+    battery: 84,
+    status: 'ONLINE',
+    lastSeen: DateTime.now(),
+  ),
+
+  'Apple Watch': VoltiaDevice(
+    deviceId: 'device-003',
+    ownerName: 'Hijo',
+    deviceType: 'WATCH',
+    platform: 'IOS',
+    lat: 39.9390,
+    lng: -75.2480,
+    battery: 73,
+    status: 'ONLINE',
+    lastSeen: DateTime.now(),
+  ),
+
+  'Ford Edge GPS': VoltiaDevice(
+    deviceId: 'vehicle-001',
+    ownerName: 'Padre',
+    deviceType: 'VEHICLE',
+    platform: 'GPS',
+    lat: 39.9280,
+    lng: -75.2550,
+    battery: 100,
+    status: 'TRACKING',
+    lastSeen: DateTime.now(),
+  ),
 };
 
   final Map<String, LatLng> _activeSosMarkers = {};
 
   String? _lastSosMessage;
-  
+  String? _selectedSosUser;
+
   @override
   void initState() {
     super.initState();
@@ -106,18 +174,74 @@ LatLng _currentPosition = const LatLng(
     _socketService.connect((data) {
       if (!mounted) return;
 
-      if (data['type'] == 'LOCATION_UPDATE') {
-       final String name = data['deviceId'] ?? 'Device';
-       final double lat = (data['latitude'] as num).toDouble();
-       final double lng = (data['longitude'] as num).toDouble();
+      if (data['type'] == 'SOS_ACTIVATED') {
+       final String userId = data['userId']?.toString() ?? 'SOS';
+       final String level = data['level']?.toString() ?? 'CRITICAL';
+
+       final double lat = (data['lat'] as num).toDouble();
+       final double lng = (data['lng'] as num).toDouble();
+
+       final LatLng sosPoint = LatLng(lat, lng);
 
        setState(() {
-        _familyDevices[name] = LatLng(lat, lng);
+        _activeSosMarkers[userId] = sosPoint;
+        _riskLevel = level;
+        _responseMode = 'DEFENSE';
+        _sentinelStatus = 'SOS ACTIVE';
+        _responseAction = '🚨 SOS activo. Emergencia monitoreada.';
+        _lastSosMessage = '🚨 SOS ACTIVO: $userId | $level';
       });
+
+      _mapController.move(sosPoint, 16.5);
+      return;
     }
-  });
-}
- 
+
+    if (data['type'] == 'LOCATION_UPDATE') {
+      final String name = data['deviceId']?.toString() ?? 'Device';
+
+      final double lat = (data['latitude'] as num).toDouble();
+      final double lng = (data['longitude'] as num).toDouble();
+
+      setState(() {
+        _familyDevices[name] = VoltiaDevice(
+          deviceId: name,
+          ownerName: data['ownerName']?.toString() ?? name,
+          deviceType: data['deviceType']?.toString() ?? 'PHONE',
+          platform: data['platform']?.toString() ?? 'UNKNOWN',
+          lat: lat,
+          lng: lng,
+          battery: (data['battery'] as num?)?.toInt() ?? 100,
+          status: data['status']?.toString() ?? 'ONLINE',
+          lastSeen: DateTime.now(),
+        );
+      });
+
+      return;
+    }
+
+    if (data['type'] == 'SOS_CANCELED') {
+      final String userId =
+          data['userId']?.toString() ?? '';
+
+      setState(() {
+        _activeSosMarkers.remove(userId);
+
+        _riskLevel = 'NORMAL';
+        _responseMode = 'MONITOR';
+        _sentinelStatus = 'ONLINE';
+        _responseAction =
+            '✓ SOS cancelado correctamente';
+
+        _lastSosMessage =
+            'SOS CANCELADO: $userId';
+       });
+
+       return;
+     }
+
+     });
+   }
+    
   @override
 void dispose() {
   _gpsSubscription?.cancel();
@@ -360,13 +484,16 @@ setState(() {
               _updateOrbitPoints();
 
               return Stack(
-                children: [
-                  _buildMap(),
-                  _buildDarkOverlay(),
-                  _buildRadarGrid(),
-                  _buildThreatLines(),
-                  _buildOrbitOverlay(),
-                  _buildScreenContent(compact),
+              children: [
+                _buildMap(),
+                _buildDarkOverlay(),
+                _buildRadarGrid(),
+                _buildThreatLines(),
+                _buildOrbitOverlay(),
+                _buildScreenContent(compact),
+
+                if (_activeSosMarkers.isNotEmpty)
+                  _buildActiveSosQueue(),
                 ],
               );
             },
@@ -475,11 +602,25 @@ setState(() {
             ),
 
             ..._familyDevices.entries.map(
+              (entry) {
+                final VoltiaDevice device = entry.value;
+                final LatLng point = LatLng(device.lat, device.lng);
+
+                return Marker(
+                  point: point,
+                  width: 64,
+                  height: 64,
+                  child: _buildFamilyDeviceMarker(device),
+                );
+              },
+            ),
+            
+            ..._activeSosMarkers.entries.map(
               (entry) => Marker(
                 point: entry.value,
-                width: 56,
-                height: 56,
-                child: _buildFamilyDeviceMarker(entry.key),
+                width: 150,
+                height: 150,
+                child: _buildSosMarker(entry.key),
               ),
             ),
 
@@ -501,12 +642,280 @@ setState(() {
     );
   }
 
-Widget _buildMainMarker() {
+  Widget _buildSosMarker(String userId) {
+  final double pulse = 1 + (_pulseController.value * 0.18);
+  final String name = userId == 'user-demo-001' ? 'Socio Demo' : userId;
+
+  return GestureDetector(
+    onTap: () => _showSosMemberPanel(userId),
+    child: Transform.scale(
+      scale: pulse,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.92),
+              border: Border.all(
+                color: Colors.redAccent,
+                width: 3,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.redAccent.withValues(alpha: 0.75),
+                  blurRadius: 30,
+                  spreadRadius: 6,
+                ),
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.shield,
+                  color: Colors.redAccent,
+                  size: 48,
+                ),
+                Positioned(
+                  right: 5,
+                  bottom: 5,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(
+                        color: Colors.black,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.person,
+                      color: Colors.black,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.88),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.redAccent,
+                width: 1.5,
+              ),
+            ),
+            child: Text(
+              'SOS • $name',
+              style: const TextStyle(
+                color: Colors.redAccent,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+void _showSosMemberPanel(String userId) {
+  final String name = userId == 'user-demo-002' ? 'Socio Demo' : userId;
+  final LatLng? point = _activeSosMarkers[userId];
+
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (context) {
+      return Container(
+        margin: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.redAccent.withValues(alpha: 0.85),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.redAccent.withValues(alpha: 0.35),
+              blurRadius: 28,
+              spreadRadius: 4,
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '🚨 SOS ACTIVO',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Socio: $name',
+                style: const TextStyle(color: Colors.white, fontSize: 17),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Estado: CRITICAL',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                point == null
+                    ? 'GPS: No disponible'
+                    : 'GPS: ${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 15),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Mensaje: ${_lastSosMessage ?? 'Ubicación recibida correctamente.'}',
+                style: const TextStyle(color: Colors.white70, fontSize: 15),
+              ),
+              const SizedBox(height: 18),
+
+              _sosActionButton(
+                label: 'VER UBICACIÓN',
+                icon: Icons.location_on,
+                onTap: () {
+                  Navigator.pop(context);
+                  if (point != null) {
+                    _mapController.move(point, 17.2);
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+
+              _sosActionButton(
+                label: 'INICIAR MONITOREO',
+                icon: Icons.visibility,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _responseMode = 'MONITORING';
+                    _sentinelStatus = 'OPERATOR LIVE';
+                    _responseAction = 'Operador monitoreando SOS activo.';
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+
+              _sosActionButton(
+                label: 'ESCALAR A CENTRAL',
+                icon: Icons.security,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _responseMode = 'ESCALATED';
+                    _sentinelStatus = 'CENTRAL ALERT';
+                    _responseAction = 'SOS escalado a central de monitoreo.';
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+
+              _sosActionButton(
+                label: 'CANCELAR SOS',
+                icon: Icons.cancel,
+                danger: true,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _activeSosMarkers.remove(userId);
+                    _riskLevel = 'LOW';
+                    _responseMode = 'NORMAL';
+                    _sentinelStatus = 'TRACKING';
+                    _responseAction = 'SOS cancelado por operador.';
+                    _lastSosMessage = null;
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Widget _sosActionButton({
+  required String label,
+  required IconData icon,
+  required VoidCallback onTap,
+  bool danger = false,
+}) {
+  final Color buttonColor = danger ? Colors.redAccent : _mainColor;
+
+  return InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(14),
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: buttonColor.withValues(alpha: 0.85),
+          width: 1.4,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: buttonColor,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: TextStyle(
+              color: buttonColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.7,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+ Widget _buildMainMarker() {
   final double scale = 1 + (_pulseController.value * 0.12);
 
   return Transform.scale(
     scale: scale,
     child: Container(
+      width: 90,
+      height: 90,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.black.withValues(alpha: 0.90),
@@ -531,24 +940,106 @@ Widget _buildMainMarker() {
   );
 }
 
-Widget _buildFamilyDeviceMarker(String name) {
+Widget _buildFamilyDeviceMarker(VoltiaDevice device) {
+  final Color markerColor = device.deviceType == 'VEHICLE'
+      ? Colors.orangeAccent
+      : device.deviceType == 'WATCH'
+          ? Colors.purpleAccent
+          : Colors.cyanAccent;
+
+  final String label = device.ownerName.isNotEmpty
+      ? device.ownerName.substring(0, 1).toUpperCase()
+      : '?';
+
   return Container(
     decoration: BoxDecoration(
       shape: BoxShape.circle,
       color: Colors.black.withValues(alpha: 0.85),
       border: Border.all(
-        color: _mainColor.withValues(alpha: 0.95),
+        color: markerColor.withValues(alpha: 0.95),
         width: 2,
       ),
+      boxShadow: [
+        BoxShadow(
+          color: markerColor.withValues(alpha: 0.55),
+          blurRadius: 18,
+          spreadRadius: 2,
+        ),
+      ],
     ),
     child: Center(
       child: Text(
-        name.substring(0, 1),
+        label,
         style: TextStyle(
-          color: _mainColor,
+          color: markerColor,
           fontWeight: FontWeight.bold,
           fontSize: 18,
         ),
+      ),
+    ),
+  );
+}
+
+Widget _buildActiveSosQueue() {
+  return Positioned(
+    top: 140,
+    right: 20,
+    child: Container(
+      width: 280,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.redAccent.withValues(alpha: 0.85),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          const Text(
+            'SOS ACTIVOS',
+            style: TextStyle(
+              color: Colors.redAccent,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          Text(
+            '${_activeSosMarkers.length} incidente(s)',
+            style: const TextStyle(
+              color: Colors.white70,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          ..._activeSosMarkers.keys.map(
+            (userId) => ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(
+                Icons.warning_rounded,
+                color: Colors.redAccent,
+              ),
+              title: Text(
+                userId,
+                style: const TextStyle(
+                  color: Colors.white,
+                ),
+              ),
+              onTap: () {
+                _selectedSosUser = userId;
+                _showSosMemberPanel(userId);
+              },
+            ),
+          ),
+        ],
       ),
     ),
   );
@@ -1018,7 +1509,7 @@ Widget _buildDarkOverlay() {
         ),
         boxShadow: [
           BoxShadow(
-            color: _mainColor.withValues(alpha: 0.20),
+            color: Colors.cyanAccent.withValues(alpha: 0.20),
             blurRadius: 24,
             spreadRadius: 1.5,
           ),
