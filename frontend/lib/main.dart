@@ -491,6 +491,7 @@ setState(() {
                 _buildThreatLines(),
                 _buildOrbitOverlay(),
                 _buildScreenContent(compact),
+                _buildDeviceCommandPanel(),
 
                 if (_activeSosMarkers.isNotEmpty)
                   _buildActiveSosQueue(),
@@ -502,6 +503,75 @@ setState(() {
       ),
     );
   }
+
+  Widget _buildDeviceCommandPanel() {
+  return Positioned(
+    top: 140,
+    left: 20,
+    child: Container(
+      width: 260,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: _mainColor.withValues(alpha: 0.7),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'FAMILY DEVICES',
+            style: TextStyle(
+              color: _mainColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          ..._familyDevices.entries.map(
+            (entry) {
+              final device = entry.value;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.devices,
+                      color: _mainColor,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+
+                    Expanded(
+                      child: Text(
+                        entry.key,
+                        style: const TextStyle(
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+
+                    Text(
+                      '${device.battery}%',
+                      style: TextStyle(
+                        color: _mainColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
   Widget _buildMap() {
     return FlutterMap(
@@ -941,40 +1011,69 @@ Widget _sosActionButton({
 }
 
 Widget _buildFamilyDeviceMarker(VoltiaDevice device) {
-  final Color markerColor = device.deviceType == 'VEHICLE'
-      ? Colors.orangeAccent
-      : device.deviceType == 'WATCH'
-          ? Colors.purpleAccent
-          : Colors.cyanAccent;
+  final bool isVehicle = device.deviceType == 'VEHICLE';
+  final bool isWatch = device.deviceType == 'WATCH';
+
+  final IconData icon = isVehicle
+      ? Icons.directions_car
+      : isWatch
+          ? Icons.watch
+          : Icons.smartphone;
 
   final String label = device.ownerName.isNotEmpty
       ? device.ownerName.substring(0, 1).toUpperCase()
       : '?';
 
-  return Container(
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: Colors.black.withValues(alpha: 0.85),
-      border: Border.all(
-        color: markerColor.withValues(alpha: 0.95),
-        width: 2,
+  return GestureDetector(
+    onTap: () {
+      setState(() {
+        _selectedSosUser = device.deviceId;
+        _responseAction =
+            '${device.ownerName} | ${device.deviceType} | ${device.battery}% | ${device.status}';
+      });
+
+      _mapController.move(
+        LatLng(device.lat, device.lng),
+        17.2,
+      );
+    },
+    child: Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.black.withValues(alpha: 0.88),
+        border: Border.all(
+          color: _mainColor.withValues(alpha: 0.95),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _mainColor.withValues(alpha: 0.55),
+            blurRadius: 18,
+            spreadRadius: 2,
+          ),
+        ],
       ),
-      boxShadow: [
-        BoxShadow(
-          color: markerColor.withValues(alpha: 0.55),
-          blurRadius: 18,
-          spreadRadius: 2,
-        ),
-      ],
-    ),
-    child: Center(
-      child: Text(
-        label,
-        style: TextStyle(
-          color: markerColor,
-          fontWeight: FontWeight.bold,
-          fontSize: 18,
-        ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            icon,
+            color: _mainColor,
+            size: 26,
+          ),
+          Positioned(
+            right: 6,
+            bottom: 5,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
       ),
     ),
   );
