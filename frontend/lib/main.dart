@@ -196,28 +196,34 @@ LatLng _currentPosition = const LatLng(
       return;
     }
 
-    if (data['type'] == 'LOCATION_UPDATE') {
-      final String name = data['deviceId']?.toString() ?? 'Device';
+   if (data['type'] == 'LOCATION_UPDATE') {
+  final String deviceId = data['deviceId']?.toString() ?? 'device-unknown';
+  final String ownerName = data['ownerName']?.toString() ?? deviceId;
+  final String deviceType = data['deviceType']?.toString() ?? 'PHONE';
+  final String platform = data['platform']?.toString() ?? 'UNKNOWN';
 
-      final double lat = (data['latitude'] as num).toDouble();
-      final double lng = (data['longitude'] as num).toDouble();
+  final double lat = (data['latitude'] as num).toDouble();
+  final double lng = (data['longitude'] as num).toDouble();
 
-      setState(() {
-        _familyDevices[name] = VoltiaDevice(
-          deviceId: name,
-          ownerName: data['ownerName']?.toString() ?? name,
-          deviceType: data['deviceType']?.toString() ?? 'PHONE',
-          platform: data['platform']?.toString() ?? 'UNKNOWN',
-          lat: lat,
-          lng: lng,
-          battery: (data['battery'] as num?)?.toInt() ?? 100,
-          status: data['status']?.toString() ?? 'ONLINE',
-          lastSeen: DateTime.now(),
-        );
-      });
+  final int battery = ((data['battery'] as num?)?.toInt()) ?? 100;
+  final String status = data['status']?.toString() ?? 'ONLINE';
 
-      return;
-    }
+  setState(() {
+    _familyDevices[ownerName] = VoltiaDevice(
+      deviceId: deviceId,
+      ownerName: ownerName,
+      deviceType: deviceType,
+      platform: platform,
+      lat: lat,
+      lng: lng,
+      battery: battery,
+      status: status,
+      lastSeen: DateTime.now(),
+    );
+  });
+
+  return;
+} 
 
     if (data['type'] == 'SOS_CANCELED') {
       final String userId =
