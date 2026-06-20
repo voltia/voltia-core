@@ -209,7 +209,7 @@ LatLng _currentPosition = const LatLng(
   final String status = data['status']?.toString() ?? 'ONLINE';
 
   setState(() {
-    _familyDevices[ownerName] = VoltiaDevice(
+    _familyDevices[deviceId] = VoltiaDevice(
       deviceId: deviceId,
       ownerName: ownerName,
       deviceType: deviceType,
@@ -512,16 +512,17 @@ setState(() {
 
   Widget _buildDeviceCommandPanel() {
   return Positioned(
-    top: 140,
-    left: 20,
+    top: 120,
+    left: 24,
     child: Container(
-      width: 260,
+      width: 230,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.75),
-        borderRadius: BorderRadius.circular(18),
+        color: Colors.black.withOpacity(0.78),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: _mainColor.withValues(alpha: 0.7),
+          color: _mainColor.withOpacity(0.8),
+          width: 1.4,
         ),
       ),
       child: Column(
@@ -531,55 +532,57 @@ setState(() {
             'FAMILY DEVICES',
             style: TextStyle(
               color: _mainColor,
+              fontSize: 13,
               fontWeight: FontWeight.bold,
-              fontSize: 16,
             ),
           ),
+
           const SizedBox(height: 12),
 
-          ..._familyDevices.entries.map(
-            (entry) {
-              final device = entry.value;
+          ..._familyDevices.entries.map((entry) {
+            final String deviceName = entry.key;
+            final VoltiaDevice device = entry.value;
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.devices,
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.devices,
+                    color: _mainColor,
+                    size: 18,
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  Expanded(
+                    child: Text(
+                      deviceName,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+
+                  Text(
+                    '${device.battery}%',
+                    style: TextStyle(
                       color: _mainColor,
-                      size: 18,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(width: 8),
-
-                    Expanded(
-                      child: Text(
-                        entry.key,
-                        style: const TextStyle(
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-
-                    Text(
-                      '${device.battery}%',
-                      style: TextStyle(
-                        color: _mainColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+                  ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     ),
   );
 }
 
-  Widget _buildMap() {
+Widget _buildMap() {
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
