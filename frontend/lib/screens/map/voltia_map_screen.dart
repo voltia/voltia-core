@@ -1,0 +1,2159 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../../services/socket_service.dart';
+
+class VoltiaDevice {
+  final String deviceId;
+  final String ownerName;
+  final String deviceType;
+  final String platform;
+  final double lat;
+  final double lng;
+  final int battery;
+  final String status;
+  final DateTime lastSeen;
+
+  const VoltiaDevice({
+    required this.deviceId,
+    required this.ownerName,
+    required this.deviceType,
+    required this.platform,
+    required this.lat,
+    required this.lng,
+    required this.battery,
+    required this.status,
+    required this.lastSeen,
+  });
+}
+
+class VoltiaMapScreen extends StatefulWidget {
+  const VoltiaMapScreen({super.key});
+
+  @override
+  State<VoltiaMapScreen> createState() => _VoltiaMapScreenState();
+}
+
+class _VoltiaMapScreenState extends State<VoltiaMapScreen>
+    with SingleTickerProviderStateMixin {
+
+  final MapController _mapController = MapController();
+  final math.Random _random = math.Random();
+
+  final SocketService _socketService = SocketService();
+
+  late final AnimationController _pulseController;
+
+Timer? _engineTimer;
+StreamSubscription<Position>? _gpsSubscription;
+bool _gpsEnabled = false;
+
+Offset _orbitFloatingOffset = const Offset(24, 430);
+
+Offset _responseFloatingOffset = const Offset(24, 500);
+
+bool _orbitExpanded = true;
+
+bool _responseExpanded = true;
+
+LatLng _currentPosition = const LatLng(
+  37.4219983,
+  -122.084,
+);
+  double _speed = 4.8;
+  double _heading = 52;
+
+  int _grid = 8;
+  int _riskScore = 35;
+  int _dangerZones = 4;
+  int _sentinelLock = 61;
+  int _trackingScore = 48;
+  int _threatPings = 5;
+  int _responseReadiness = 72;
+  int _orbitLock = 68;
+  int _orbitalNodes = 5;
+
+  String _riskLevel = 'LOW';
+  String _sentinelStatus = 'TRACKING';
+  String _responseMode = 'NORMAL';
+  String _responseAction =
+    'Vigilancia activa. Sin intervención.';
+
+  // PANEL SIZES
+  double _orbitPanelWidth = 360;
+  double _orbitPanelHeight = 72;
+
+  double _responsePanelWidth = 420;
+  double _responsePanelHeight = 88;
+
+  double _compassPanelWidth = 220;
+  double _compassPanelHeight = 120;
+
+  double _devicePanelWidth = 230;
+  double _devicePanelHeight = 240;
+
+  double _familyPanelWidth = 230;
+  double _familyPanelHeight = 170;
+
+  bool _sentinelMode = true;
+
+  final List<LatLng> _movementTrail = [];
+  final List<LatLng> _dangerPoints = [];
+  final List<LatLng> _sentinelPoints = [];
+  final List<LatLng> _orbitPoints = [];
+
+  String? _selectedDeviceId;
+
+  double _devicePanelTop = 120;
+  double _devicePanelLeft = 24;
+
+  double _compassPanelTop = 180;
+  double _compassPanelLeft = 24;
+
+  double _orbitPanelTop = 520;
+  double _orbitPanelLeft = 24;
+
+  double _responsePanelTop = 620;
+  double _responsePanelLeft = 24;
+
+  Offset _devicePanelOffset = const Offset(32, 120);
+  Offset _selectedDevicePanelOffset = const Offset(32, 360);
+  Offset _orbitPanelOffset = const Offset(24, 520);
+  Offset _responsePanelOffset = const Offset(24, 610);
+
+  Offset _compassPanel1Offset = const Offset(24, 180);
+  bool _compassExpanded = true;
+  
+  bool _panelsVertical = true;
+
+  final Map<String, VoltiaDevice> _familyDevices = {
+  'Samsung S25': VoltiaDevice(
+    deviceId: 'device-001',
+    ownerName: 'Padre',
+    deviceType: 'PHONE',
+    platform: 'ANDROID',
+    lat: 39.9420,
+    lng: -75.2520,
+    battery: 91,
+    status: 'ONLINE',
+    lastSeen: DateTime.now(),
+  ),
+
+  'Maria Phone': VoltiaDevice(
+    deviceId: 'device-002',
+    ownerName: 'Madre',
+    deviceType: 'PHONE',
+    platform: 'ANDROID',
+    lat: 39.9320,
+    lng: -75.2620,
+    battery: 84,
+    status: 'ONLINE',
+    lastSeen: DateTime.now(),
+  ),
+
+  'Apple Watch': VoltiaDevice(
+    deviceId: 'device-003',
+    ownerName: 'Hijo',
+    deviceType: 'WATCH',
+    platform: 'IOS',
+    lat: 39.9390,
+    lng: -75.2480,
+    battery: 73,
+    status: 'ONLINE',
+    lastSeen: DateTime.now(),
+  ),
+
+  'Ford Edge GPS': VoltiaDevice(
+    deviceId: 'vehicle-001',
+    ownerName: 'Padre',
+    deviceType: 'VEHICLE',
+    platform: 'GPS',
+    lat: 39.9280,
+    lng: -75.2550,
+    battery: 100,
+    status: 'TRACKING',
+    lastSeen: DateTime.now(),
+  ),
+};
+
+  final Map<String, LatLng> _activeSosMarkers = {};
+
+  String? _lastSosMessage;
+  String? _selectedSosUser;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+
+    _seedPoints();
+    _initGps();
+    _startEngine();
+
+    _socketService.connect((data) {
+      if (!mounted) return;
+
+      if (data['type'] == 'SOS_ACTIVATED') {
+       final String userId = data['userId']?.toString() ?? 'SOS';
+       final String level = data['level']?.toString() ?? 'CRITICAL';
+
+       final double lat = (data['lat'] as num).toDouble();
+       final double lng = (data['lng'] as num).toDouble();
+
+       final LatLng sosPoint = LatLng(lat, lng);
+
+       setState(() {
+        _activeSosMarkers[userId] = sosPoint;
+        _riskLevel = level;
+        _responseMode = 'DEFENSE';
+        _sentinelStatus = 'SOS ACTIVE';
+        _responseAction = '🚨 SOS activo. Emergencia monitoreada.';
+        _lastSosMessage = '🚨 SOS ACTIVO: $userId | $level';
+      });
+
+      _mapController.move(sosPoint, 16.5);
+      return;
+    }
+
+   if (data['type'] == 'LOCATION_UPDATE') {
+  final String deviceId = data['deviceId']?.toString() ?? 'device-unknown';
+  final String ownerName = data['ownerName']?.toString() ?? deviceId;
+  final String deviceType = data['deviceType']?.toString() ?? 'PHONE';
+  final String platform = data['platform']?.toString() ?? 'UNKNOWN';
+
+  final double lat = (data['latitude'] as num).toDouble();
+  final double lng = (data['longitude'] as num).toDouble();
+
+  final int battery = ((data['battery'] as num?)?.toInt()) ?? 100;
+  final String status = data['status']?.toString() ?? 'ONLINE';
+
+  setState(() {
+    _familyDevices[deviceId] = VoltiaDevice(
+      deviceId: deviceId,
+      ownerName: ownerName,
+      deviceType: deviceType,
+      platform: platform,
+      lat: lat,
+      lng: lng,
+      battery: battery,
+      status: status,
+      lastSeen: DateTime.now(),
+    );
+  });
+
+  return;
+} 
+
+    if (data['type'] == 'SOS_CANCELED') {
+      final String userId =
+          data['userId']?.toString() ?? '';
+
+      setState(() {
+        _activeSosMarkers.remove(userId);
+
+        _riskLevel = 'NORMAL';
+        _responseMode = 'MONITOR';
+        _sentinelStatus = 'ONLINE';
+        _responseAction =
+            '✓ SOS cancelado correctamente';
+
+        _lastSosMessage =
+            'SOS CANCELADO: $userId';
+       });
+
+       return;
+     }
+
+     });
+   }
+    
+  @override
+void dispose() {
+  _gpsSubscription?.cancel();
+  _engineTimer?.cancel();
+  _pulseController.dispose();
+  _socketService.dispose();
+  super.dispose();
+}
+
+Future<void> _initGps() async {
+
+  bool serviceEnabled =
+      await Geolocator.isLocationServiceEnabled();
+
+  if (!serviceEnabled) {
+    return;
+  }
+
+  LocationPermission permission =
+    await Geolocator.checkPermission();
+
+if (permission == LocationPermission.denied) {
+  permission =
+      await Geolocator.requestPermission();
+}
+
+if (permission == LocationPermission.deniedForever) {
+  return;
+}
+
+Position position =
+    await Geolocator.getCurrentPosition();
+
+setState(() {
+  _currentPosition = LatLng(
+    position.latitude,
+    position.longitude,
+  );
+});
+}
+
+  void _seedPoints() {
+    _movementTrail.clear();
+    _dangerPoints.clear();
+    _sentinelPoints.clear();
+    _orbitPoints.clear();
+
+    for (int i = 0; i < 8; i++) {
+      _movementTrail.add(
+        LatLng(
+          _currentPosition.latitude + (i * 0.00018),
+          _currentPosition.longitude - (i * 0.00012),
+        ),
+      );
+    }
+
+    for (int i = 0; i < 7; i++) {
+      _dangerPoints.add(_randomNearbyPoint(0.004));
+    }
+
+    for (int i = 0; i < 6; i++) {
+      _sentinelPoints.add(_randomNearbyPoint(0.003));
+    }
+
+    _updateOrbitPoints();
+  }
+
+  LatLng _randomNearbyPoint(double spread) {
+    return LatLng(
+      _currentPosition.latitude + ((_random.nextDouble() - 0.5) * spread),
+      _currentPosition.longitude + ((_random.nextDouble() - 0.5) * spread),
+    );
+  }
+
+  void _updateOrbitPoints() {
+    _orbitPoints.clear();
+
+    final double phase = _pulseController.value * math.pi * 2;
+    const double radiusLat = 0.00125;
+    const double radiusLng = 0.00165;
+
+    for (int i = 0; i < _orbitalNodes; i++) {
+      final double angle = phase + ((math.pi * 2) / _orbitalNodes) * i;
+
+      _orbitPoints.add(
+        LatLng(
+          _currentPosition.latitude + math.sin(angle) * radiusLat,
+          _currentPosition.longitude + math.cos(angle) * radiusLng,
+        ),
+      );
+    }
+  }
+
+  void _startEngine() {
+    _engineTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      final LatLng nextPosition = LatLng(
+        _currentPosition.latitude + ((_random.nextDouble() - 0.5) * 0.00045),
+        _currentPosition.longitude + ((_random.nextDouble() - 0.5) * 0.00045),
+      );
+
+      _movementTrail.add(nextPosition);
+      if (_movementTrail.length > 18) _movementTrail.removeAt(0);
+
+      if (_random.nextBool()) {
+        _dangerPoints.add(_randomNearbyPoint(0.004));
+        if (_dangerPoints.length > 8) _dangerPoints.removeAt(0);
+      }
+
+      if (_random.nextBool()) {
+        _sentinelPoints.add(_randomNearbyPoint(0.003));
+        if (_sentinelPoints.length > 7) _sentinelPoints.removeAt(0);
+      }
+
+      final int nextRisk = 18 + _random.nextInt(82);
+
+      setState(() {
+        _currentPosition = nextPosition;
+        _speed = 1.2 + _random.nextDouble() * 7.5;
+        _heading = _random.nextInt(360).toDouble();
+        _grid = 6 + _random.nextInt(6);
+        _riskScore = nextRisk;
+        _dangerZones = 2 + _random.nextInt(6);
+        _sentinelLock = 50 + _random.nextInt(50);
+        _trackingScore = 40 + _random.nextInt(60);
+        _threatPings = 2 + _random.nextInt(8);
+        _responseReadiness = 55 + _random.nextInt(45);
+        _orbitLock = 58 + _random.nextInt(42);
+        _orbitalNodes = 4 + _random.nextInt(5);
+
+        _updateRiskAndResponse();
+        _updateOrbitPoints();
+      });
+    });
+  }
+
+  void _updateRiskAndResponse() {
+    if (_riskScore >= 88) {
+      _riskLevel = 'CRITICAL';
+      _sentinelStatus = 'CRITICAL';
+      _responseMode = 'CRITICAL';
+      _responseAction = 'Pre-SOS preparado. Ruta segura priorizada.';
+    } else if (_riskScore >= 72) {
+      _riskLevel = 'HIGH';
+      _sentinelStatus = 'DEFENSE';
+      _responseMode = 'DEFENSE';
+      _responseAction = 'Defensa autónoma activa. Amenaza monitoreada.';
+    } else if (_riskScore >= 45) {
+      _riskLevel = 'MEDIUM';
+      _sentinelStatus = 'WATCH';
+      _responseMode = 'WATCH';
+      _responseAction = 'Vigilancia reforzada. Sentinel ajusta seguimiento.';
+    } else {
+      _riskLevel = 'LOW';
+      _sentinelStatus = 'TRACKING';
+      _responseMode = 'NORMAL';
+      _responseAction = 'Vigilancia activa. Sin intervención.';
+    }
+  }
+
+  Color get _mainColor {
+    switch (_riskLevel) {
+      case 'CRITICAL':
+        return const Color(0xFFFF003C);
+      case 'HIGH':
+        return const Color(0xFFFF174F);
+      case 'MEDIUM':
+        return const Color(0xFFFFA726);
+      default:
+        return const Color(0xFF00F5D4);
+    }
+  }
+
+  Color get _safeColor {
+    if (_riskLevel == 'LOW') return const Color(0xFF00F5D4);
+    if (_riskLevel == 'MEDIUM') return const Color(0xFFFFA726);
+    return const Color(0xFFFF174F);
+  }
+
+  String get _safeMessage {
+    switch (_riskLevel) {
+      case 'CRITICAL':
+        return 'Riesgo crítico. Sistema prepara respuesta prioritaria.';
+      case 'HIGH':
+        return 'Modo defensa activo. Amenazas detectadas.';
+      case 'MEDIUM':
+        return 'Vigilancia territorial reforzada.';
+      default:
+        return 'Corredor seguro activo. Ruta protegida estable.';
+    }
+  }
+
+  IconData get _responseIcon {
+    switch (_responseMode) {
+      case 'CRITICAL':
+        return Icons.emergency_rounded;
+      case 'DEFENSE':
+        return Icons.security_rounded;
+      case 'WATCH':
+        return Icons.visibility_rounded;
+      default:
+        return Icons.shield_rounded;
+    }
+  }
+
+  void _centerMap() {
+    _mapController.move(_currentPosition, 16.2);
+  }
+
+  void _toggleSentinel() {
+    setState(() {
+      _sentinelMode = !_sentinelMode;
+    });
+  }
+
+  void _forceCritical() {
+    setState(() {
+      _riskScore = 92 + _random.nextInt(8);
+      _updateRiskAndResponse();
+    });
+  }
+
+  void _resetSafe() {
+    setState(() {
+      _riskScore = 18 + _random.nextInt(20);
+      _updateRiskAndResponse();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final bool compact = constraints.maxHeight < 760;
+
+          return AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, _) {
+              _updateOrbitPoints();
+
+              return Stack(
+              children: [
+                _buildMap(),
+                _buildDarkOverlay(),
+                _buildRadarGrid(),
+                _buildThreatLines(),
+                _buildOrbitOverlay(),
+                _buildScreenContent(compact),
+                _buildDeviceCommandPanel(),
+                _buildSelectedDevicePanel(),
+                _buildCompassPanel(),
+                _buildOrbitFloatingPanel(),
+                _buildResponseFloatingPanel(),
+              
+                if (_activeSosMarkers.isNotEmpty)
+                  _buildActiveSosQueue(),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildOrbitFloatingPanel() {
+  return Positioned(
+    left: _orbitFloatingOffset.dx,
+    top: _orbitFloatingOffset.dy,
+    child: GestureDetector(
+      onPanUpdate: (details) {
+        setState(() {
+          _orbitFloatingOffset += details.delta;
+        });
+      },
+      child: SizedBox(
+        width: _orbitExpanded ? _orbitPanelWidth : 90,
+        height: _orbitExpanded ? _orbitPanelHeight : 34,
+        child: _glassPanel(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'LIVE AI THREAT ORBIT',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _orbitExpanded = !_orbitExpanded;
+                      });
+                    },
+                    child: Icon(
+                      _orbitExpanded ? Icons.remove : Icons.add,
+                      color: _mainColor,
+                      size: 18,
+                    ),
+                  ),
+                ],
+              ),
+              if (_orbitExpanded) ...[
+                const SizedBox(height: 3),
+                Text(
+                  'Orbit Lock: $_orbitLock% | Nodes: $_orbitalNodes | Threat Pings: $_threatPings',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: _orbitLock / 100,
+                    minHeight: 5,
+                    backgroundColor: Colors.white.withValues(alpha: 0.10),
+                    valueColor: AlwaysStoppedAnimation<Color>(_mainColor),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+  Widget _buildResponseFloatingPanel() {
+  return Positioned(
+    left: _responseFloatingOffset.dx,
+    top: _responseFloatingOffset.dy,
+    child: GestureDetector(
+      onPanUpdate: (details) {
+        setState(() {
+          _responseFloatingOffset += details.delta;
+        });
+      },
+      child: Stack(
+        children: [
+          _glassPanel(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'AUTONOMOUS THREAT RESPONSE',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _mainColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _responseExpanded = !_responseExpanded;
+                      });
+                    },
+                    child: Icon(
+                      _responseExpanded ? Icons.remove : Icons.add,
+                      color: _mainColor,
+                      size: 18,
+                    ),
+                  ),
+                ],
+              ),
+              if (_responseExpanded) ...[
+                const SizedBox(height: 3),
+                Text(
+                  'Modo: $_responseMode | Readiness: $_responseReadiness% | Sentinel: $_sentinelStatus',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _responseAction,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: _mainColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ), // _glassPanel 
+      ),
+    );
+  }
+
+  Widget _buildSelectedDevicePanel() {
+  final String? selectedId = _selectedDeviceId;
+
+  if (selectedId == null) {
+    return const SizedBox.shrink();
+  }
+
+  final VoltiaDevice? device = _familyDevices.values
+      .where((item) => item.deviceId == selectedId)
+      .firstOrNull;
+
+  if (device == null) {
+    return const SizedBox.shrink();
+  }
+
+  return Positioned(
+    left: _selectedDevicePanelOffset.dx,
+    top: _selectedDevicePanelOffset.dy,
+    child: GestureDetector(
+      onPanUpdate: (details) {
+        setState(() {
+          _selectedDevicePanelOffset += details.delta;
+        });
+      },
+      child: Container(
+        width: 280,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.82),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _mainColor.withValues(alpha: 0.85),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'DEVICE INTELLIGENCE',
+              style: TextStyle(
+                color: _mainColor,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _deviceInfoRow('OWNER', device.ownerName),
+            _deviceInfoRow('TYPE', device.deviceType),
+            _deviceInfoRow('PLATFORM', device.platform),
+            _deviceInfoRow('BATTERY', '${device.battery}%'),
+            _deviceInfoRow('STATUS', device.status),
+            _deviceInfoRow('LAT', device.lat.toStringAsFixed(5)),
+            _deviceInfoRow('LNG', device.lng.toStringAsFixed(5)),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _buildCompassPanel() {
+  return Positioned(
+    left: _compassPanel1Offset.dx,
+    top: _compassPanel1Offset.dy,
+    child: GestureDetector(
+      onPanUpdate: (details) {
+        setState(() {
+          _compassPanel1Offset += details.delta;
+        });
+      },
+      child: Container(
+        width: _compassExpanded ? 260 : 70,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _mainColor.withValues(alpha: 0.8),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _mainColor.withValues(alpha: 0.25),
+              blurRadius: 18,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.navigation,
+                  color: _mainColor,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+
+                if (_compassExpanded)
+                  Expanded(
+                    child: Text(
+                      'TACTICAL COMPASS',
+                      style: TextStyle(
+                        color: _mainColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _compassExpanded = !_compassExpanded;
+                    });
+                  },
+                  child: Icon(
+                    _compassExpanded ? Icons.remove : Icons.add,
+                    color: _mainColor,
+                    size: 18,
+                  ),
+                ),
+              ],
+            ),
+
+            if (_compassExpanded) ...[
+              const SizedBox(height: 10),
+
+              Text(
+                '${_heading.toStringAsFixed(0)}°',
+                style: TextStyle(
+                  color: _mainColor,
+                  fontSize: 34,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              LinearProgressIndicator(
+                value: _heading / 360,
+                backgroundColor: Colors.white.withValues(alpha: 0.1),
+                valueColor: AlwaysStoppedAnimation(_mainColor),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+  Widget _buildDeviceCommandPanel() {
+  return Positioned(
+    top: _devicePanelTop,
+    left: _devicePanelLeft,
+    child: GestureDetector(
+      onPanUpdate: (details) {
+        setState(() {
+          _devicePanelTop += details.delta.dy;
+          _devicePanelLeft += details.delta.dx;
+        });
+      },
+      child: Container(
+        width: 230,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.78),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _mainColor.withOpacity(0.8),
+            width: 1.4,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'FAMILY DEVICES',
+              style: TextStyle(
+                color: _mainColor,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ..._familyDevices.entries.map((entry) {
+              final String deviceName = entry.key;
+              final VoltiaDevice device = entry.value;
+              final bool isSelected = _selectedDeviceId == device.deviceId;
+
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedDeviceId = device.deviceId;
+                  });
+
+                  _mapController.move(
+                    LatLng(device.lat, device.lng),
+                    16.8,
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.devices,
+                        color: isSelected ? _mainColor : Colors.white,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          deviceName,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: isSelected ? _mainColor : Colors.white,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${device.battery}%',
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : _mainColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _deviceInfoRow(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 85,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.65),
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: _mainColor,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildMap() {
+  return FlutterMap(
+    mapController: _mapController,
+    options: MapOptions(
+      initialCenter: _currentPosition,
+      initialZoom: 16.1,
+      interactionOptions: const InteractionOptions(
+        flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+      ),
+    ),
+    children: [
+      TileLayer(
+        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        userAgentPackageName: 'com.voltia.map',
+      ),
+
+      PolylineLayer(
+        polylines: [
+          Polyline(
+            points: _movementTrail,
+            strokeWidth: 4,
+            color: _mainColor.withOpacity(0.88),
+          ),
+          if (_sentinelMode)
+            Polyline(
+              points: _sentinelPoints,
+              strokeWidth: 2,
+              color: Colors.white.withOpacity(0.45),
+            ),
+          if (_orbitPoints.length >= 3)
+            Polyline(
+              points: [..._orbitPoints, _orbitPoints.first],
+              strokeWidth: 2.5,
+              color: _mainColor.withOpacity(0.62),
+            ),
+          ..._orbitPoints.map(
+            (point) => Polyline(
+              points: [_currentPosition, point],
+              strokeWidth: 1.2,
+              color: _mainColor.withOpacity(0.25),
+            ),
+          ),
+        ],
+      ),
+
+      CircleLayer(
+        circles: [
+          CircleMarker(
+            point: _currentPosition,
+            radius: _riskLevel == 'CRITICAL' ? 120 : 90,
+            color: _mainColor.withOpacity(0.20),
+            borderColor: _mainColor.withOpacity(0.55),
+            borderStrokeWidth: 1.2,
+          ),
+          CircleMarker(
+            point: _currentPosition,
+            radius: 150 + (_pulseController.value * 34),
+            color: _mainColor.withOpacity(0.05),
+            borderColor: _mainColor.withOpacity(0.22),
+            borderStrokeWidth: 1.1,
+          ),
+          ..._dangerPoints.map(
+            (point) => CircleMarker(
+              point: point,
+              radius: _riskLevel == 'LOW' ? 11 : 18,
+              color: _mainColor.withOpacity(0.32),
+              borderColor: _mainColor.withOpacity(0.80),
+              borderStrokeWidth: 1,
+            ),
+          ),
+          if (_sentinelMode)
+            ..._sentinelPoints.map(
+              (point) => CircleMarker(
+                point: point,
+                radius: 7,
+                color: Colors.white.withOpacity(0.28),
+                borderColor: _mainColor.withOpacity(0.75),
+                borderStrokeWidth: 1,
+              ),
+            ),
+          ..._orbitPoints.map(
+            (point) => CircleMarker(
+              point: point,
+              radius: 13 + (_pulseController.value * 7),
+              color: _mainColor.withOpacity(0.25),
+              borderColor: _mainColor.withOpacity(0.85),
+              borderStrokeWidth: 1.4,
+            ),
+          ),
+        ],
+      ),
+
+      MarkerLayer(
+        markers: [
+          Marker(
+            point: _currentPosition,
+            width: 90,
+            height: 90,
+            child: _buildMainMarker(),
+          ),
+
+          ..._familyDevices.entries.map((entry) {
+            final VoltiaDevice device = entry.value;
+            final LatLng point = LatLng(device.lat, device.lng);
+
+            return Marker(
+              point: point,
+              width: 64,
+              height: 64,
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedDeviceId = device.deviceId;
+                  });
+
+                  _mapController.move(point, 16.8);
+                },
+                child: _buildFamilyDeviceMarker(device),
+              ),
+            );
+          }),
+
+          ..._activeSosMarkers.entries.map(
+            (entry) => Marker(
+              point: entry.value,
+              width: 150,
+              height: 150,
+              child: _buildSosMarker(entry.key),
+            ),
+          ),
+
+          ..._orbitPoints.map(
+            (point) => Marker(
+              point: point,
+              width: 30,
+              height: 30,
+              child: Icon(
+                Icons.satellite_alt_rounded,
+                color: _mainColor.withOpacity(0.92),
+                size: 18,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+  Widget _buildSosMarker(String userId) {
+  final double pulse = 1 + (_pulseController.value * 0.18);
+  final String name = userId == 'user-demo-001' ? 'Socio Demo' : userId;
+
+  return GestureDetector(
+    onTap: () => _showSosMemberPanel(userId),
+    child: Transform.scale(
+      scale: pulse,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.92),
+              border: Border.all(
+                color: Colors.redAccent,
+                width: 3,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.redAccent.withValues(alpha: 0.75),
+                  blurRadius: 30,
+                  spreadRadius: 6,
+                ),
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.shield,
+                  color: Colors.redAccent,
+                  size: 48,
+                ),
+                Positioned(
+                  right: 5,
+                  bottom: 5,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(
+                        color: Colors.black,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.person,
+                      color: Colors.black,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.88),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.redAccent,
+                width: 1.5,
+              ),
+            ),
+            child: Text(
+              'SOS • $name',
+              style: const TextStyle(
+                color: Colors.redAccent,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+void _showSosMemberPanel(String userId) {
+  final String name = userId == 'user-demo-002' ? 'Socio Demo' : userId;
+  final LatLng? point = _activeSosMarkers[userId];
+
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (context) {
+      return Container(
+        margin: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.redAccent.withValues(alpha: 0.85),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.redAccent.withValues(alpha: 0.35),
+              blurRadius: 28,
+              spreadRadius: 4,
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '🚨 SOS ACTIVO',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Socio: $name',
+                style: const TextStyle(color: Colors.white, fontSize: 17),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Estado: CRITICAL',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                point == null
+                    ? 'GPS: No disponible'
+                    : 'GPS: ${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 15),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Mensaje: ${_lastSosMessage ?? 'Ubicación recibida correctamente.'}',
+                style: const TextStyle(color: Colors.white70, fontSize: 15),
+              ),
+              const SizedBox(height: 18),
+
+              _sosActionButton(
+                label: 'VER UBICACIÓN',
+                icon: Icons.location_on,
+                onTap: () {
+                  Navigator.pop(context);
+                  if (point != null) {
+                    _mapController.move(point, 17.2);
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+
+              _sosActionButton(
+                label: 'INICIAR MONITOREO',
+                icon: Icons.visibility,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _responseMode = 'MONITORING';
+                    _sentinelStatus = 'OPERATOR LIVE';
+                    _responseAction = 'Operador monitoreando SOS activo.';
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+
+              _sosActionButton(
+                label: 'ESCALAR A CENTRAL',
+                icon: Icons.security,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _responseMode = 'ESCALATED';
+                    _sentinelStatus = 'CENTRAL ALERT';
+                    _responseAction = 'SOS escalado a central de monitoreo.';
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+
+              _sosActionButton(
+                label: 'CANCELAR SOS',
+                icon: Icons.cancel,
+                danger: true,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _activeSosMarkers.remove(userId);
+                    _riskLevel = 'LOW';
+                    _responseMode = 'NORMAL';
+                    _sentinelStatus = 'TRACKING';
+                    _responseAction = 'SOS cancelado por operador.';
+                    _lastSosMessage = null;
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Widget _sosActionButton({
+  required String label,
+  required IconData icon,
+  required VoidCallback onTap,
+  bool danger = false,
+}) {
+  final Color buttonColor = danger ? Colors.redAccent : _mainColor;
+
+  return InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(14),
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: buttonColor.withValues(alpha: 0.85),
+          width: 1.4,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: buttonColor,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: TextStyle(
+              color: buttonColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.7,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+ Widget _buildMainMarker() {
+  final double scale = 1 + (_pulseController.value * 0.12);
+
+  return Transform.scale(
+    scale: scale,
+    child: Container(
+      width: 90,
+      height: 90,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.black.withValues(alpha: 0.90),
+        border: Border.all(
+          color: _mainColor.withValues(alpha: 0.95),
+          width: 2.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _mainColor.withValues(alpha: 0.65),
+            blurRadius: 30,
+            spreadRadius: 4,
+          ),
+        ],
+      ),
+      child: Icon(
+        _responseIcon,
+        color: _mainColor,
+        size: 34,
+      ),
+    ),
+  );
+}
+
+Widget _buildFamilyDeviceMarker(VoltiaDevice device) {
+  final bool isVehicle = device.deviceType == 'VEHICLE';
+  final bool isWatch = device.deviceType == 'WATCH';
+
+  final IconData icon = isVehicle
+      ? Icons.directions_car
+      : isWatch
+          ? Icons.watch
+          : Icons.smartphone;
+
+  final String label = device.ownerName.isNotEmpty
+      ? device.ownerName.substring(0, 1).toUpperCase()
+      : '?';
+
+  return GestureDetector(
+    onTap: () {
+      setState(() {
+        _selectedSosUser = device.deviceId;
+        _responseAction =
+            '${device.ownerName} | ${device.deviceType} | ${device.battery}% | ${device.status}';
+      });
+
+      _mapController.move(
+        LatLng(device.lat, device.lng),
+        17.2,
+      );
+    },
+    child: Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.black.withValues(alpha: 0.88),
+        border: Border.all(
+          color: _mainColor.withValues(alpha: 0.95),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _mainColor.withValues(alpha: 0.55),
+            blurRadius: 18,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            icon,
+            color: _mainColor,
+            size: 26,
+          ),
+          Positioned(
+            right: 6,
+            bottom: 5,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildActiveSosQueue() {
+  return Positioned(
+    top: 140,
+    right: 20,
+    child: Container(
+      width: 280,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.redAccent.withValues(alpha: 0.85),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          const Text(
+            'SOS ACTIVOS',
+            style: TextStyle(
+              color: Colors.redAccent,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          Text(
+            '${_activeSosMarkers.length} incidente(s)',
+            style: const TextStyle(
+              color: Colors.white70,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          ..._activeSosMarkers.keys.map(
+            (userId) => ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(
+                Icons.warning_rounded,
+                color: Colors.redAccent,
+              ),
+              title: Text(
+                userId,
+                style: const TextStyle(
+                  color: Colors.white,
+                ),
+              ),
+              onTap: () {
+                _selectedSosUser = userId;
+                _showSosMemberPanel(userId);
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildDarkOverlay() {
+    return IgnorePointer(
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.black.withValues(alpha: 0.12),
+              Colors.black.withValues(alpha: 0.03),
+              Colors.black.withValues(alpha: 0.24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRadarGrid() {
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _RadarGridPainter(
+          color: _mainColor.withValues(alpha: 0.16),
+        ),
+        size: Size.infinite,
+      ),
+    );
+  }
+
+  Widget _buildThreatLines() {
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _ThreatLinePainter(
+          color: _mainColor.withValues(
+            alpha: _riskLevel == 'LOW' ? 0.15 : 0.36,
+          ),
+          seed: _riskScore,
+        ),
+        size: Size.infinite,
+      ),
+    );
+  }
+
+  Widget _buildOrbitOverlay() {
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _OrbitPainter(
+          color: _mainColor,
+          progress: _pulseController.value,
+          nodes: _orbitalNodes,
+        ),
+        size: Size.infinite,
+      ),
+    );
+  }
+
+  Widget _buildScreenContent(bool compact) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(14, compact ? 10 : 16, 14, 8),
+        child: Column(
+          children: [
+            _buildHeaderCard(compact),
+            SizedBox(height: compact ? 8 : 10),
+            const Spacer(),        
+           _buildBottomButtons(compact),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderCard(bool compact) {
+    return _glassPanel(
+      padding: EdgeInsets.fromLTRB(
+        compact ? 14 : 18,
+        compact ? 12 : 16,
+        compact ? 14 : 18,
+        compact ? 12 : 16,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.shield_rounded,
+                color: _mainColor,
+                size: compact ? 28 : 34,
+              ),
+              SizedBox(width: compact ? 12 : 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'VOLTIA MAP',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: compact ? 28 : 32,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 5,
+                      ),
+                    ),
+                    SizedBox(height: compact ? 3 : 5),
+                    Text(
+                      'Live AI Threat Orbit Engine',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.86),
+                        fontSize: compact ? 12 : 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.satellite_alt_rounded,
+                color: _mainColor,
+                size: compact ? 27 : 31,
+              ),
+            ],
+          ),
+          SizedBox(height: compact ? 14 : 18),
+          Row(
+            children: [
+              Expanded(
+                child: _metricItem(
+                  'Velocidad',
+                  '${_speed.toStringAsFixed(1)} km/h',
+                  compact,
+                ),
+              ),
+              Expanded(
+                child: _metricItem(
+                  'Rumbo',
+                  '${_heading.toStringAsFixed(0)}°',
+                  compact,
+                ),
+              ),
+              Expanded(
+                child: _metricItem(
+                  'Orbit',
+                  '$_orbitLock%',
+                  compact,
+                ),
+              ),
+              Expanded(
+                child: _metricItem(
+                  'Riesgo',
+                  _riskLevel,
+                  compact,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: compact ? 13 : 16),
+          Center(
+            child: Text(
+              'LAT ${_currentPosition.latitude.toStringAsFixed(4)}   LNG ${_currentPosition.longitude.toStringAsFixed(4)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _mainColor,
+                fontSize: compact ? 14 : 16,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 2.2,
+              ),
+            ),
+          ),
+          SizedBox(height: compact ? 8 : 10),
+          Center(
+            child: Text(
+              'LIVE AI THREAT ORBIT ONLINE',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _mainColor,
+                fontSize: compact ? 12 : 14,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompassCard(bool compact) {
+    return _glassPanel(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 14 : 18,
+        vertical: compact ? 10 : 13,
+      ),
+      child: Row(
+        children: [
+          Transform.rotate(
+            angle: _heading * math.pi / 180,
+            child: Icon(
+              Icons.navigation_rounded,
+              color: _mainColor,
+              size: compact ? 25 : 30,
+            ),
+          ),
+          SizedBox(width: compact ? 12 : 16),
+          Expanded(
+            child: Text(
+              'TACTICAL COMPASS',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: compact ? 16 : 18,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 2.5,
+              ),
+            ),
+          ),
+          Text(
+            '${_heading.toStringAsFixed(0)}°',
+            style: TextStyle(
+              color: _mainColor,
+              fontSize: compact ? 17 : 20,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrbitCard(bool compact) {
+    return _glassPanel(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'LIVE AI THREAT ORBIT',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: _mainColor,
+              fontSize: compact ? 16 : 19,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.8,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Orbit Lock: $_orbitLock% | Nodes: $_orbitalNodes | Threat Pings: $_threatPings',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.92),
+              fontSize: compact ? 12 : 14,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 3),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: _orbitLock / 100,
+              minHeight: compact ? 5 : 7,
+              backgroundColor: Colors.white.withValues(alpha: 0.10),
+              valueColor: AlwaysStoppedAnimation<Color>(_mainColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResponseCard(bool compact) {
+    return _glassPanel(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'AUTONOMOUS THREAT RESPONSE',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: _mainColor,
+              fontSize: compact ? 16 : 19,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.8,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Modo: $_responseMode | Readiness: $_responseReadiness% | Sentinel: $_sentinelStatus',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.92),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
+          SizedBox(height: compact ? 7 : 9),
+          Text(
+            _responseAction,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: _mainColor,
+              fontSize: compact ? 12 : 14,
+              fontWeight: FontWeight.w900,
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomButtons(bool compact) {
+    return Row(
+      children: [
+        Expanded(
+          child: _actionButton(
+            icon: Icons.my_location_rounded,
+            label: 'Centrar',
+            onTap: _centerMap,
+            compact: compact,
+          ),
+        ),
+        SizedBox(width: compact ? 8 : 10),
+        Expanded(
+          child: _actionButton(
+            icon: Icons.satellite_alt_rounded,
+            label: 'Orbit',
+            onTap: _seedPoints,
+            compact: compact,
+          ),
+        ),
+        SizedBox(width: compact ? 8 : 10),
+        Expanded(
+          child: _actionButton(
+            icon: Icons.emergency_rounded,
+            label: 'Critical',
+            onTap: _forceCritical,
+            compact: compact,
+          ),
+        ),
+        SizedBox(width: compact ? 8 : 10),
+        Expanded(
+          child: _actionButton(
+            icon: _sentinelMode ? Icons.radar_rounded : Icons.radar_outlined,
+            label: 'Sentinel',
+            onTap: _toggleSentinel,
+            compact: compact,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _metricItem(String title, String value, bool compact) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.74),
+            fontSize: compact ? 10 : 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        SizedBox(height: compact ? 4 : 6),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: _mainColor,
+            fontSize: compact ? 12 : 15,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required bool compact,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: compact ? 60 : 68,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: _mainColor.withValues(alpha: 0.70),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _mainColor.withValues(alpha: 0.20),
+              blurRadius: 16,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: _mainColor, size: compact ? 22 : 25),
+            SizedBox(height: compact ? 4 : 6),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: compact ? 9.5 : 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _glassPanel({
+    required Widget child,
+    required EdgeInsets padding,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: _mainColor.withValues(alpha: 0.62),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.cyanAccent.withValues(alpha: 0.20),
+            blurRadius: 24,
+            spreadRadius: 1.5,
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 18,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _RadarGridPainter extends CustomPainter {
+  final Color color;
+
+  _RadarGridPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint linePaint = Paint()
+      ..color = color
+      ..strokeWidth = 0.8;
+
+    const double spacing = 42;
+
+    for (double x = 0; x < size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), linePaint);
+    }
+
+    for (double y = 0; y < size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
+    }
+
+    final Offset center = Offset(size.width / 2, size.height / 2);
+    final Paint circlePaint = Paint()
+      ..color = color.withValues(alpha: 0.45)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+
+    canvas.drawCircle(center, 80, circlePaint);
+    canvas.drawCircle(center, 145, circlePaint);
+    canvas.drawCircle(center, 215, circlePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RadarGridPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
+class _ThreatLinePainter extends CustomPainter {
+  final Color color;
+  final int seed;
+
+  _ThreatLinePainter({
+    required this.color,
+    required this.seed,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final math.Random random = math.Random(seed);
+    final Paint paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    final Offset center = Offset(size.width / 2, size.height / 2);
+
+    for (int i = 0; i < 8; i++) {
+      final Offset point = Offset(
+        random.nextDouble() * size.width,
+        random.nextDouble() * size.height,
+      );
+
+      canvas.drawLine(center, point, paint);
+
+      final Paint dotPaint = Paint()
+        ..color = color.withValues(alpha: 0.75)
+        ..style = PaintingStyle.fill;
+
+      canvas.drawCircle(point, 4 + random.nextDouble() * 4, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ThreatLinePainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.seed != seed;
+  }
+}
+
+class _OrbitPainter extends CustomPainter {
+  final Color color;
+  final double progress;
+  final int nodes;
+
+  _OrbitPainter({
+    required this.color,
+    required this.progress,
+    required this.nodes,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Offset center = Offset(size.width / 2, size.height / 2);
+
+    final Paint orbitPaint = Paint()
+      ..color = color.withValues(alpha: 0.24)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+
+    final Paint nodePaint = Paint()
+      ..color = color.withValues(alpha: 0.75)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(center, 110, orbitPaint);
+    canvas.drawCircle(center, 172, orbitPaint);
+
+    for (int i = 0; i < nodes; i++) {
+      final double angle = (progress * math.pi * 2) + ((math.pi * 2) / nodes * i);
+      final Offset node = Offset(
+        center.dx + math.cos(angle) * 172,
+        center.dy + math.sin(angle) * 172,
+      );
+
+      canvas.drawCircle(node, 4.5, nodePaint);
+      canvas.drawLine(
+        center,
+        node,
+        Paint()
+          ..color = color.withValues(alpha: 0.12)
+          ..strokeWidth = 1,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _OrbitPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.progress != progress ||
+        oldDelegate.nodes != nodes;
+  }
+}
