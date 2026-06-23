@@ -542,7 +542,7 @@ setState(() {
     );
   }
 
-  Widget _buildOrbitFloatingPanel() {
+Widget _buildOrbitFloatingPanel() {
   return Positioned(
     left: _orbitFloatingOffset.dx,
     top: _orbitFloatingOffset.dy,
@@ -553,69 +553,142 @@ setState(() {
         });
       },
       child: SizedBox(
-        width: _orbitExpanded ? _orbitPanelWidth : 90,
-        height: _orbitExpanded ? _orbitPanelHeight : 34,
-        child: _glassPanel(
-          padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'LIVE AI THREAT ORBIT',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+        width: _orbitExpanded ? _orbitPanelWidth : 120,
+        height: _orbitExpanded ? _orbitPanelHeight : 40,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: _glassPanel(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                child: ClipRect(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'LIVE AI THREAT ORBIT',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.4,
+                                ),
+                              ),
+                            ),
+
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _orbitPanelWidth =
+                                      (_orbitPanelWidth - 60).clamp(220.0, 1200.0).toDouble();
+                                  _orbitPanelHeight =
+                                      (_orbitPanelHeight - 30).clamp(70.0, 700.0).toDouble();
+                                });
+                              },
+                              child: Icon(
+                                Icons.zoom_out,
+                                color: _mainColor,
+                                size: 18,
+                              ),
+                            ),
+
+                            const SizedBox(width: 8),
+
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _orbitPanelWidth =
+                                      (_orbitPanelWidth + 60).clamp(220.0, 1200.0).toDouble();
+                                  _orbitPanelHeight =
+                                      (_orbitPanelHeight + 30).clamp(70.0, 700.0).toDouble();
+                                });
+                              },
+                              child: Icon(
+                                Icons.zoom_in,
+                                color: _mainColor,
+                                size: 18,
+                              ),
+                            ),
+
+                            const SizedBox(width: 8),
+
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _orbitExpanded = !_orbitExpanded;
+                                });
+                              },
+                              child: Icon(
+                                _orbitExpanded ? Icons.remove : Icons.add,
+                                color: _mainColor,
+                                size: 18,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        if (_orbitExpanded) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Orbit Lock: $_orbitLock% | Nodes: $_orbitalNodes | Threat Pings: $_threatPings',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.92),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: LinearProgressIndicator(
+                              value: _orbitLock / 100,
+                              minHeight: 6,
+                              backgroundColor: Colors.white.withValues(alpha: 0.10),
+                              valueColor: AlwaysStoppedAnimation<Color>(_mainColor),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _orbitExpanded = !_orbitExpanded;
-                      });
-                    },
-                    child: Icon(
-                      _orbitExpanded ? Icons.remove : Icons.add,
-                      color: _mainColor,
-                      size: 18,
-                    ),
-                  ),
-                ],
+                ),
               ),
-              if (_orbitExpanded) ...[
-                const SizedBox(height: 3),
-                Text(
-                  'Orbit Lock: $_orbitLock% | Nodes: $_orbitalNodes | Threat Pings: $_threatPings',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
+            ),
+
+            Positioned(
+              right: 4,
+              bottom: 4,
+              child: GestureDetector(
+                onPanUpdate: (details) {
+                  setState(() {
+                    _orbitPanelWidth =
+                        (_orbitPanelWidth + details.delta.dx).clamp(220.0, 1200.0).toDouble();
+                    _orbitPanelHeight =
+                        (_orbitPanelHeight + details.delta.dy).clamp(70.0, 700.0).toDouble();
+                  });
+                },
+                child: Icon(
+                  Icons.open_in_full,
+                  color: _mainColor,
+                  size: 16,
                 ),
-                const SizedBox(height: 3),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: _orbitLock / 100,
-                    minHeight: 5,
-                    backgroundColor: Colors.white.withValues(alpha: 0.10),
-                    valueColor: AlwaysStoppedAnimation<Color>(_mainColor),
-                  ),
-                ),
-              ],
-            ],
-          ),
+              ),
+            ),
+          ],
         ),
       ),
     ),
   );
-}
+} 
 
-  Widget _buildResponseFloatingPanel() {
+Widget _buildResponseFloatingPanel() {
   return Positioned(
     left: _responseFloatingOffset.dx,
     top: _responseFloatingOffset.dy,
@@ -625,73 +698,78 @@ setState(() {
           _responseFloatingOffset += details.delta;
         });
       },
-      child: Stack(
-        children: [
-          _glassPanel(
-          padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
+      child: SizedBox(
+        width: _responseExpanded ? _responsePanelWidth : 110,
+        height: _responseExpanded ? _responsePanelHeight : 34,
+        child: Stack(
+          children: [
+            _glassPanel(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'AUTONOMOUS THREAT RESPONSE',
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'AUTONOMOUS THREAT RESPONSE',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _responseExpanded = !_responseExpanded;
+                          });
+                        },
+                        child: Icon(
+                          _responseExpanded ? Icons.remove : Icons.add,
+                          color: _mainColor,
+                          size: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_responseExpanded) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      'Modo: $_responseMode | Readiness: $_responseReadiness% | Sentinel: $_sentinelStatus',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.92),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _responseAction,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: _mainColor,
-                        fontSize: 14,
+                        fontSize: 11,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: 1.4,
                       ),
                     ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _responseExpanded = !_responseExpanded;
-                      });
-                    },
-                    child: Icon(
-                      _responseExpanded ? Icons.remove : Icons.add,
-                      color: _mainColor,
-                      size: 18,
-                    ),
-                  ),
+                  ],
                 ],
               ),
-              if (_responseExpanded) ...[
-                const SizedBox(height: 3),
-                Text(
-                  'Modo: $_responseMode | Readiness: $_responseReadiness% | Sentinel: $_sentinelStatus',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _responseAction,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: _mainColor,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
             ),
-          ),
-        ), // _glassPanel 
+          ],
+        ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildSelectedDevicePanel() {
   final String? selectedId = _selectedDeviceId;
