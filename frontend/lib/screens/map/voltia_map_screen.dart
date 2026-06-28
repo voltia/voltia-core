@@ -8,6 +8,8 @@ import 'package:latlong2/latlong.dart';
 
 import '../../services/socket_service.dart';
 
+import 'package:frontend/widgets/voltia_floating_window.dart';
+
 class VoltiaDevice {
   final String deviceId;
   final String ownerName;
@@ -543,230 +545,90 @@ setState(() {
   }
 
 Widget _buildOrbitFloatingPanel() {
-  return Positioned(
-    left: _orbitFloatingOffset.dx,
-    top: _orbitFloatingOffset.dy,
-    child: GestureDetector(
-      onPanUpdate: (details) {
-        setState(() {
-          _orbitFloatingOffset += details.delta;
-        });
-      },
-      child: SizedBox(
-        width: _orbitExpanded ? _orbitPanelWidth : 120,
-        height: _orbitExpanded ? _orbitPanelHeight : 40,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: _glassPanel(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-                child: ClipRect(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'LIVE AI THREAT ORBIT',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.4,
-                                ),
-                              ),
-                            ),
-
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _orbitPanelWidth =
-                                      (_orbitPanelWidth - 60).clamp(220.0, 1200.0).toDouble();
-                                  _orbitPanelHeight =
-                                      (_orbitPanelHeight - 30).clamp(70.0, 700.0).toDouble();
-                                });
-                              },
-                              child: Icon(
-                                Icons.zoom_out,
-                                color: _mainColor,
-                                size: 18,
-                              ),
-                            ),
-
-                            const SizedBox(width: 8),
-
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _orbitPanelWidth =
-                                      (_orbitPanelWidth + 60).clamp(220.0, 1200.0).toDouble();
-                                  _orbitPanelHeight =
-                                      (_orbitPanelHeight + 30).clamp(70.0, 700.0).toDouble();
-                                });
-                              },
-                              child: Icon(
-                                Icons.zoom_in,
-                                color: _mainColor,
-                                size: 18,
-                              ),
-                            ),
-
-                            const SizedBox(width: 8),
-
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _orbitExpanded = !_orbitExpanded;
-                                });
-                              },
-                              child: Icon(
-                                _orbitExpanded ? Icons.remove : Icons.add,
-                                color: _mainColor,
-                                size: 18,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        if (_orbitExpanded) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            'Orbit Lock: $_orbitLock% | Nodes: $_orbitalNodes | Threat Pings: $_threatPings',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.92),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(999),
-                            child: LinearProgressIndicator(
-                              value: _orbitLock / 100,
-                              minHeight: 6,
-                              backgroundColor: Colors.white.withValues(alpha: 0.10),
-                              valueColor: AlwaysStoppedAnimation<Color>(_mainColor),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            Positioned(
-              right: 4,
-              bottom: 4,
-              child: GestureDetector(
-                onPanUpdate: (details) {
-                  setState(() {
-                    _orbitPanelWidth =
-                        (_orbitPanelWidth + details.delta.dx).clamp(220.0, 1200.0).toDouble();
-                    _orbitPanelHeight =
-                        (_orbitPanelHeight + details.delta.dy).clamp(70.0, 700.0).toDouble();
-                  });
-                },
-                child: Icon(
-                  Icons.open_in_full,
-                  color: _mainColor,
-                  size: 16,
-                ),
-              ),
-            ),
-          ],
+  return VoltiaFloatingWindow(
+    id: 'orbit',
+    title: 'LIVE AI THREAT ORBIT',
+    initialOffset: _orbitFloatingOffset,
+    initialWidth: 420,
+    initialHeight: 165,
+    minWidth: 320,
+    minHeight: 120,
+    accentColor: _mainColor,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Orbit Lock: $_orbitLock | Nodes: $_orbitalNodes | Threat Pings: $_threatPings',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.92),
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
         ),
-      ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: _orbitLock / 100,
+            minHeight: 6,
+            backgroundColor: Colors.white.withValues(alpha: 0.10),
+            valueColor: AlwaysStoppedAnimation<Color>(_mainColor),
+          ),
+        ),
+      ],
     ),
   );
-} 
+}
 
 Widget _buildResponseFloatingPanel() {
-  return Positioned(
-    left: _responseFloatingOffset.dx,
-    top: _responseFloatingOffset.dy,
-    child: GestureDetector(
-      onPanUpdate: (details) {
-        setState(() {
-          _responseFloatingOffset += details.delta;
-        });
-      },
-      child: SizedBox(
-        width: _responseExpanded ? _responsePanelWidth : 110,
-        height: _responseExpanded ? _responsePanelHeight : 34,
-        child: Stack(
-          children: [
-            _glassPanel(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'AUTONOMOUS THREAT RESPONSE',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.4,
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _responseExpanded = !_responseExpanded;
-                          });
-                        },
-                        child: Icon(
-                          _responseExpanded ? Icons.remove : Icons.add,
-                          color: _mainColor,
-                          size: 18,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_responseExpanded) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      'Modo: $_responseMode | Readiness: $_responseReadiness% | Sentinel: $_sentinelStatus',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.92),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      _responseAction,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: _mainColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
+  return VoltiaFloatingWindow(
+    id: 'response',
+    title: 'AUTONOMOUS THREAT RESPONSE',
+    initialOffset: _responseFloatingOffset,
+    initialWidth: 360,
+    initialHeight: 150,
+    minWidth: 260,
+    minHeight: 70,
+    maxWidth: 900,
+    maxHeight: 500,
+    accentColor: _mainColor,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Modo: DEFENSE | Readiness: 84% | Sentinel: DEFENSE',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.92),
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
         ),
-      ),
+        const SizedBox(height: 8),
+        Text(
+          'Defensa autónoma activa. Amenaza monitoreada.',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: _mainColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: 0.84,
+            minHeight: 6,
+            backgroundColor: Colors.white.withValues(alpha: 0.10),
+            valueColor: AlwaysStoppedAnimation<Color>(_mainColor),
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -786,142 +648,91 @@ Widget _buildResponseFloatingPanel() {
     return const SizedBox.shrink();
   }
 
-  return Positioned(
-    left: _selectedDevicePanelOffset.dx,
-    top: _selectedDevicePanelOffset.dy,
-    child: GestureDetector(
-      onPanUpdate: (details) {
-        setState(() {
-          _selectedDevicePanelOffset += details.delta;
-        });
-      },
-      child: Container(
-        width: 280,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.82),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: _mainColor.withValues(alpha: 0.85),
-            width: 1.5,
-          ),
+  return VoltiaFloatingWindow(
+    id: 'device_intelligence',
+    title: 'DEVICE INTELLIGENCE',
+    initialOffset: _selectedDevicePanelOffset,
+    initialWidth: 300,
+    initialHeight: 520,
+    minWidth: 260,
+    minHeight: 220,
+    maxWidth: 700,
+    maxHeight: 760,
+    accentColor: _mainColor,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _deviceInfoRow('OWNER', device.ownerName),
+        _deviceInfoRow('TYPE', device.deviceType),
+        _deviceInfoRow('PLATFORM', device.platform),
+        _deviceInfoRow('BATTERY', '${device.battery}%'),
+        _deviceInfoRow('STATUS', device.status),
+
+        const SizedBox(height: 10),
+
+        _deviceInfoRow('LAT', device.lat.toStringAsFixed(5)),
+        _deviceInfoRow('LNG', device.lng.toStringAsFixed(5)),
+        _deviceInfoRow(
+          'ADDRESS',
+          'Dirección pendiente por reverse geocoding',
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'DEVICE INTELLIGENCE',
-              style: TextStyle(
-                color: _mainColor,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            _deviceInfoRow('OWNER', device.ownerName),
-            _deviceInfoRow('TYPE', device.deviceType),
-            _deviceInfoRow('PLATFORM', device.platform),
-            _deviceInfoRow('BATTERY', '${device.battery}%'),
-            _deviceInfoRow('STATUS', device.status),
-            _deviceInfoRow('LAT', device.lat.toStringAsFixed(5)),
-            _deviceInfoRow('LNG', device.lng.toStringAsFixed(5)),
-          ],
-        ),
-      ),
+
+        const SizedBox(height: 10),
+
+        _deviceInfoRow('GPS ACCURACY', '±3 m'),
+        _deviceInfoRow('LAST UPDATE', 'LIVE'),
+        _deviceInfoRow('MOVING', 'YES'),
+        _deviceInfoRow('SPEED', '${_speed.toStringAsFixed(1)} km/h'),
+        _deviceInfoRow('HEADING', '${_heading.toStringAsFixed(0)}°'),
+
+        const SizedBox(height: 10),
+
+        _deviceInfoRow('SIGNAL', 'STRONG'),
+        _deviceInfoRow('NETWORK', '4G / 5G READY'),
+        _deviceInfoRow('TRUST', 'TRUSTED'),
+        _deviceInfoRow('ROOT/JAILBREAK', 'CLEAR'),
+        _deviceInfoRow('RISK LEVEL', _riskLevel),
+        _deviceInfoRow('SENTINEL', 'ACTIVE'),
+      ],
     ),
   );
 }
 
 Widget _buildCompassPanel() {
-  return Positioned(
-    left: _compassPanel1Offset.dx,
-    top: _compassPanel1Offset.dy,
-    child: GestureDetector(
-      onPanUpdate: (details) {
-        setState(() {
-          _compassPanel1Offset += details.delta;
-        });
-      },
-      child: Container(
-        width: _compassExpanded ? 260 : 70,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.85),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: _mainColor.withValues(alpha: 0.8),
-            width: 1.5,
+  return VoltiaFloatingWindow(
+    id: 'compass',
+    title: 'TACTICAL COMPASS',
+    initialOffset: _compassPanel1Offset,
+    initialWidth: _compassExpanded ? 260 : 220,
+    initialHeight: _compassExpanded ? 130 : 90,
+    minWidth: 220,
+    minHeight: 80,
+    maxWidth: 700,
+    maxHeight: 420,
+    accentColor: _mainColor,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${_heading.toStringAsFixed(0)}°',
+          style: TextStyle(
+            color: _mainColor,
+            fontSize: 34,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.2,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: _mainColor.withValues(alpha: 0.25),
-              blurRadius: 18,
-            ),
-          ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.navigation,
-                  color: _mainColor,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-
-                if (_compassExpanded)
-                  Expanded(
-                    child: Text(
-                      'TACTICAL COMPASS',
-                      style: TextStyle(
-                        color: _mainColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _compassExpanded = !_compassExpanded;
-                    });
-                  },
-                  child: Icon(
-                    _compassExpanded ? Icons.remove : Icons.add,
-                    color: _mainColor,
-                    size: 18,
-                  ),
-                ),
-              ],
-            ),
-
-            if (_compassExpanded) ...[
-              const SizedBox(height: 10),
-
-              Text(
-                '${_heading.toStringAsFixed(0)}°',
-                style: TextStyle(
-                  color: _mainColor,
-                  fontSize: 34,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              LinearProgressIndicator(
-                value: _heading / 360,
-                backgroundColor: Colors.white.withValues(alpha: 0.1),
-                valueColor: AlwaysStoppedAnimation(_mainColor),
-              ),
-            ],
-          ],
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: (_heading % 360) / 360,
+            minHeight: 6,
+            backgroundColor: Colors.white.withValues(alpha: 0.10),
+            valueColor: AlwaysStoppedAnimation<Color>(_mainColor),
+          ),
         ),
-      ),
+      ],
     ),
   );
 }
