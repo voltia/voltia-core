@@ -662,6 +662,15 @@ Widget _buildResponseFloatingPanel() {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _wrapStatusChips([
+          _statusChip('ONLINE', Icons.circle),
+          _statusChip('GPS LOCK', Icons.satellite_alt),
+          _statusChip('${device.battery}%', Icons.battery_full),
+          _statusChip('5G READY', Icons.network_cell),
+        ]),
+
+        const SizedBox(height: 12),
+
         _deviceInfoRow('OWNER', device.ownerName),
         _deviceInfoRow('TYPE', device.deviceType),
         _deviceInfoRow('PLATFORM', device.platform),
@@ -852,6 +861,44 @@ Widget _deviceInfoRow(String label, String value) {
               fontSize: 12,
               fontWeight: FontWeight.bold,
             ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _wrapStatusChips(List<Widget> children) {
+  return Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: children,
+  );
+}
+
+Widget _statusChip(String label, IconData icon) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(
+        color: _mainColor.withValues(alpha: 0.45),
+        width: 1,
+      ),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: _mainColor, size: 13),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.90),
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.7,
           ),
         ),
       ],
